@@ -281,7 +281,7 @@ public class Fabric8FlinkKubeClientTest extends KubernetesClientTestBase {
     }
 
     @Test
-    void testGetPodsWithLabels() {
+    void testGetPodsWithLabels() throws ExecutionException, InterruptedException {
         final String podName = "pod-with-labels";
         final Pod pod =
                 new PodBuilder()
@@ -293,7 +293,8 @@ public class Fabric8FlinkKubeClientTest extends KubernetesClientTestBase {
                         .endSpec()
                         .build();
         this.kubeClient.pods().inNamespace(NAMESPACE).create(pod);
-        List<KubernetesPod> kubernetesPods = this.flinkKubeClient.getPodsWithLabels(TESTING_LABELS);
+        List<KubernetesPod> kubernetesPods = this.flinkKubeClient.getPodsWithLabels(TESTING_LABELS)
+                .get();
         assertThat(kubernetesPods)
                 .satisfiesExactly(
                         kubernetesPod -> assertThat(kubernetesPod.getName()).isEqualTo(podName));

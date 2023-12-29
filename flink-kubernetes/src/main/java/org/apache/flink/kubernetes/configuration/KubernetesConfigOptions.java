@@ -33,6 +33,7 @@ import org.apache.flink.kubernetes.kubeclient.services.ServiceType;
 import org.apache.flink.kubernetes.utils.Constants;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -439,6 +440,12 @@ public class KubernetesConfigOptions {
                                                     + "client gives up. For example, %s.",
                                             code("FlinkKubeClient#checkAndUpdateConfigMap"))
                                     .build());
+
+    public static final ConfigOption<Duration> KUBERNETES_TRANSACTIONAL_OPERATION_RETRY_INTERVAL =
+            key("kubernetes.transactional-operation.retry-interval")
+                    .durationType()
+                    .defaultValue(Duration.ofMillis(3000))
+                    .withDescription("Interval between each retries of kubernetes transactional operation.");
 
     public static final ConfigOption<String> JOB_MANAGER_POD_TEMPLATE;
 

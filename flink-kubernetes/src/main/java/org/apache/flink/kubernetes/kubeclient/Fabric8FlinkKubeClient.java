@@ -54,7 +54,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -191,22 +190,22 @@ public class Fabric8FlinkKubeClient implements FlinkKubeClient {
     }
 
     @Override
-    public List<KubernetesPod> getPodsWithLabels(Map<String, String> labels) {
-        final List<Pod> podList =
-                this.internalClient
-                        .pods()
-                        .withLabels(labels)
-                        .list(
-                                new ListOptionsBuilder()
-                                        .withResourceVersion(KUBERNETES_ZERO_RESOURCE_VERSION)
-                                        .build())
-                        .getItems();
-
-        if (podList == null || podList.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        return podList.stream().map(KubernetesPod::new).collect(Collectors.toList());
+    public CompletableFuture<List<KubernetesPod>> getPodsWithLabels(Map<String, String> labels) {
+        return  CompletableFuture.supplyAsync(() -> {
+            final List<Pod> podList =
+                    this.internalClient
+                            .pods()
+                            .withLabels(labels)
+                            .list(new ListOptionsBuilder()
+                                    .withResourceVersion(KUBERNETES_ZERO_RESOURCE_VERSION)
+                                    .build())
+                            .getItems();
+            if (podList == null || podList.isEmpty()) {
+                return Collections.emptyList();
+            }else {
+                return podList.stream().map(KubernetesPod::new).collect(Collectors.toList());
+            }
+        }, kubeClientExecutorService);
     }
 
     @Override

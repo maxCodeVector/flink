@@ -72,6 +72,8 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
     private final Function<String, KubernetesConfigMapSharedWatcher>
             createConfigMapSharedWatcherFunction;
 
+    private int errorTimesForPodListing;
+
     private TestingFlinkKubeClient(
             Function<KubernetesPod, CompletableFuture<Void>> createTaskManagerPodFunction,
             Function<String, CompletableFuture<Void>> stopPodFunction,
@@ -94,7 +96,8 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
                             KubernetesLeaderElector>
                     createLeaderElectorFunction,
             Function<String, KubernetesConfigMapSharedWatcher>
-                    createConfigMapSharedWatcherFunction) {
+                    createConfigMapSharedWatcherFunction,
+            int errorTimesForPodListing) {
 
         this.createTaskManagerPodFunction = createTaskManagerPodFunction;
         this.stopPodFunction = stopPodFunction;
@@ -111,6 +114,7 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
 
         this.createLeaderElectorFunction = createLeaderElectorFunction;
         this.createConfigMapSharedWatcherFunction = createConfigMapSharedWatcherFunction;
+        this.errorTimesForPodListing = errorTimesForPodListing;
     }
 
     @Override
@@ -144,8 +148,14 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
     }
 
     @Override
-    public List<KubernetesPod> getPodsWithLabels(Map<String, String> labels) {
-        return getPodsWithLabelsFunction.apply(labels);
+    public CompletableFuture<List<KubernetesPod>> getPodsWithLabels(Map<String, String> labels) {
+        if(errorTimesForPodListing > 0){
+            CompletableFuture<List<KubernetesPod>> future = new CompletableFuture<>();
+            errorTimesForPodListing --;
+            future.completeExceptionally(new Exception("too many requests"));
+            return future;
+        }
+        return CompletableFuture.completedFuture(getPodsWithLabelsFunction.apply(labels));
     }
 
     @Override
@@ -245,6 +255,8 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
         private Function<String, KubernetesConfigMapSharedWatcher>
                 createConfigMapSharedWatcherFunction = TestingKubernetesConfigMapSharedWatcher::new;
 
+        private int errorTimesForPodListing;
+
         private Builder() {}
 
         public Builder setCreateTaskManagerPodFunction(
@@ -334,6 +346,11 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
             return this;
         }
 
+        public Builder setErrorTimesForPodListing(int numOfErrorTimes) {
+            this.errorTimesForPodListing = numOfErrorTimes;
+            return this;
+        }
+
         public TestingFlinkKubeClient build() {
             return new TestingFlinkKubeClient(
                     createTaskManagerPodFunction,
@@ -347,7 +364,8 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
                     deleteConfigMapFunction,
                     closeConsumer,
                     createLeaderElectorFunction,
-                    createConfigMapSharedWatcherFunction);
+                    createConfigMapSharedWatcherFunction,
+                    errorTimesForPodListing);
         }
     }
 

@@ -96,7 +96,7 @@ public interface FlinkKubeClient extends AutoCloseable {
      * @param labels labels to filter the pods
      * @return pod list
      */
-    List<KubernetesPod> getPodsWithLabels(Map<String, String> labels);
+    CompletableFuture<List<KubernetesPod>> getPodsWithLabels(Map<String, String> labels);
 
     /**
      * Watch the pods selected by labels and do the {@link WatchCallbackHandler}.

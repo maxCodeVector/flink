@@ -39,8 +39,10 @@ import org.apache.flink.util.concurrent.FutureUtils;
 
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.client.KubernetesClientException;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -347,6 +349,40 @@ class KubernetesResourceManagerDriverTest
         };
     }
 
+    @Test
+    public void testRecoverPreviousAttemptWorkersWhenBeingRateLimited() throws Exception {
+        new Context() {{
+            // may try 3 times with a 100ms delay between each attempt
+            flinkConfig.setInteger(KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_MAX_RETRIES, 3);
+            flinkConfig.set(KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_RETRY_INTERVAL, Duration.ofMillis(100));
+            preparePreviousAttemptWorkers();
+
+            // First test should fail because Resource Manager only try three times however
+            // Kubernetes will throw error 4 times.
+            final CompletableFuture<Collection<KubernetesWorkerNode>> recoveredWorkersFuture1 =
+                    new CompletableFuture<>();
+            resourceEventHandlerBuilder.setOnPreviousAttemptWorkersRecoveredConsumer(
+                    recoveredWorkersFuture1::complete);
+            mockPodListingWithError(4);
+            try{
+                runTest(() -> {});
+                fail("should fail because listing pod will be thrown error 4 times");
+            } catch (Exception e) {
+                Assertions.assertEquals("too many requests", e.getCause().getCause().getMessage());
+            }
+
+            // Kubernetes will throw error 2 times. Resource Manager should recover previous worker
+            // in its third attempt.
+            final CompletableFuture<Collection<KubernetesWorkerNode>> recoveredWorkersFuture2 =
+                    new CompletableFuture<>();
+            resourceEventHandlerBuilder.setOnPreviousAttemptWorkersRecoveredConsumer(
+                    recoveredWorkersFuture2::complete);
+            mockPodListingWithError(2);
+            runTest(() -> validateWorkersRecoveredFromPreviousAttempt(
+                    recoveredWorkersFuture2.get(TIMEOUT_SEC, TimeUnit.SECONDS)));
+        }};
+    }
+
     @Override
     protected ResourceManagerDriverTestBase<KubernetesWorkerNode>.Context createContext() {
         return new Context();
@@ -588,6 +624,10 @@ class KubernetesResourceManagerDriverTest
                         // make sure finishing validation
                         validationFuture.get(TIMEOUT_SEC, TimeUnit.SECONDS);
                     });
+        }
+
+        protected void mockPodListingWithError(int numOfErrorTimes) {
+            flinkKubeClientBuilder.setErrorTimesForPodListing(numOfErrorTimes);
         }
     }
 }
