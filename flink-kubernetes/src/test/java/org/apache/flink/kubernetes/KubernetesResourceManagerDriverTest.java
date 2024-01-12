@@ -351,36 +351,47 @@ class KubernetesResourceManagerDriverTest
 
     @Test
     public void testRecoverPreviousAttemptWorkersWhenBeingRateLimited() throws Exception {
-        new Context() {{
-            // may try 3 times with a 100ms delay between each attempt
-            flinkConfig.setInteger(KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_MAX_RETRIES, 3);
-            flinkConfig.set(KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_RETRY_INTERVAL, Duration.ofMillis(100));
-            preparePreviousAttemptWorkers();
+        new Context() {
+            {
+                // may try 3 times with a 100ms initial delay between each attempt
+                flinkConfig.setInteger(
+                        KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_MAX_RETRIES, 3);
+                flinkConfig.set(
+                        KubernetesConfigOptions
+                                .KUBERNETES_TRANSACTIONAL_OPERATION_INIT_RETRY_INTERVAL,
+                        Duration.ofMillis(100));
+                preparePreviousAttemptWorkers();
 
-            // First test should fail because Resource Manager only try three times however
-            // Kubernetes will throw error 4 times.
-            final CompletableFuture<Collection<KubernetesWorkerNode>> recoveredWorkersFuture1 =
-                    new CompletableFuture<>();
-            resourceEventHandlerBuilder.setOnPreviousAttemptWorkersRecoveredConsumer(
-                    recoveredWorkersFuture1::complete);
-            mockPodListingWithError(4);
-            try{
-                runTest(() -> {});
-                fail("should fail because listing pod will be thrown error 4 times");
-            } catch (Exception e) {
-                Assertions.assertEquals("too many requests", e.getCause().getCause().getMessage());
+                // First test should fail because Resource Manager only try three times however
+                // Kubernetes will throw error 4 times.
+                final CompletableFuture<Collection<KubernetesWorkerNode>> recoveredWorkersFuture1 =
+                        new CompletableFuture<>();
+                resourceEventHandlerBuilder.setOnPreviousAttemptWorkersRecoveredConsumer(
+                        recoveredWorkersFuture1::complete);
+                mockPodListingWithError(4);
+                try {
+                    runTest(() -> {});
+                    fail("should fail because listing pod will throw error 4 times");
+                } catch (Exception e) {
+                    Assertions.assertEquals(
+                            "too many requests", e.getCause().getCause().getMessage());
+                }
+
+                // Kubernetes will throw error 2 times. Resource Manager should recover previous
+                // worker
+                // in its third attempt.
+                final CompletableFuture<Collection<KubernetesWorkerNode>> recoveredWorkersFuture2 =
+                        new CompletableFuture<>();
+                resourceEventHandlerBuilder.setOnPreviousAttemptWorkersRecoveredConsumer(
+                        recoveredWorkersFuture2::complete);
+                mockPodListingWithError(2);
+                runTest(
+                        () ->
+                                validateWorkersRecoveredFromPreviousAttempt(
+                                        recoveredWorkersFuture2.get(
+                                                TIMEOUT_SEC, TimeUnit.SECONDS)));
             }
-
-            // Kubernetes will throw error 2 times. Resource Manager should recover previous worker
-            // in its third attempt.
-            final CompletableFuture<Collection<KubernetesWorkerNode>> recoveredWorkersFuture2 =
-                    new CompletableFuture<>();
-            resourceEventHandlerBuilder.setOnPreviousAttemptWorkersRecoveredConsumer(
-                    recoveredWorkersFuture2::complete);
-            mockPodListingWithError(2);
-            runTest(() -> validateWorkersRecoveredFromPreviousAttempt(
-                    recoveredWorkersFuture2.get(TIMEOUT_SEC, TimeUnit.SECONDS)));
-        }};
+        };
     }
 
     @Override

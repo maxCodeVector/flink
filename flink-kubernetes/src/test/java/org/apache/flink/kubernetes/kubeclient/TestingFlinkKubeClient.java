@@ -95,8 +95,7 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
                             KubernetesLeaderElector.LeaderCallbackHandler,
                             KubernetesLeaderElector>
                     createLeaderElectorFunction,
-            Function<String, KubernetesConfigMapSharedWatcher>
-                    createConfigMapSharedWatcherFunction,
+            Function<String, KubernetesConfigMapSharedWatcher> createConfigMapSharedWatcherFunction,
             int errorTimesForPodListing) {
 
         this.createTaskManagerPodFunction = createTaskManagerPodFunction;
@@ -149,9 +148,9 @@ public class TestingFlinkKubeClient implements FlinkKubeClient {
 
     @Override
     public CompletableFuture<List<KubernetesPod>> getPodsWithLabels(Map<String, String> labels) {
-        if(errorTimesForPodListing > 0){
+        if (errorTimesForPodListing > 0) {
             CompletableFuture<List<KubernetesPod>> future = new CompletableFuture<>();
-            errorTimesForPodListing --;
+            errorTimesForPodListing--;
             future.completeExceptionally(new Exception("too many requests"));
             return future;
         }

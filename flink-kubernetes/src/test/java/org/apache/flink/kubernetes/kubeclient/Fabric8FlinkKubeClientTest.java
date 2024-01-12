@@ -293,8 +293,8 @@ public class Fabric8FlinkKubeClientTest extends KubernetesClientTestBase {
                         .endSpec()
                         .build();
         this.kubeClient.pods().inNamespace(NAMESPACE).create(pod);
-        List<KubernetesPod> kubernetesPods = this.flinkKubeClient.getPodsWithLabels(TESTING_LABELS)
-                .get();
+        List<KubernetesPod> kubernetesPods =
+                this.flinkKubeClient.getPodsWithLabels(TESTING_LABELS).get();
         assertThat(kubernetesPods)
                 .satisfiesExactly(
                         kubernetesPod -> assertThat(kubernetesPod.getName()).isEqualTo(podName));

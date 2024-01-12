@@ -191,21 +191,27 @@ public class Fabric8FlinkKubeClient implements FlinkKubeClient {
 
     @Override
     public CompletableFuture<List<KubernetesPod>> getPodsWithLabels(Map<String, String> labels) {
-        return  CompletableFuture.supplyAsync(() -> {
-            final List<Pod> podList =
-                    this.internalClient
-                            .pods()
-                            .withLabels(labels)
-                            .list(new ListOptionsBuilder()
-                                    .withResourceVersion(KUBERNETES_ZERO_RESOURCE_VERSION)
-                                    .build())
-                            .getItems();
-            if (podList == null || podList.isEmpty()) {
-                return Collections.emptyList();
-            }else {
-                return podList.stream().map(KubernetesPod::new).collect(Collectors.toList());
-            }
-        }, kubeClientExecutorService);
+        return CompletableFuture.supplyAsync(
+                () -> {
+                    final List<Pod> podList =
+                            this.internalClient
+                                    .pods()
+                                    .withLabels(labels)
+                                    .list(
+                                            new ListOptionsBuilder()
+                                                    .withResourceVersion(
+                                                            KUBERNETES_ZERO_RESOURCE_VERSION)
+                                                    .build())
+                                    .getItems();
+                    if (podList == null || podList.isEmpty()) {
+                        return Collections.emptyList();
+                    } else {
+                        return podList.stream()
+                                .map(KubernetesPod::new)
+                                .collect(Collectors.toList());
+                    }
+                },
+                kubeClientExecutorService);
     }
 
     @Override

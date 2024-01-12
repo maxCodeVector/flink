@@ -441,11 +441,14 @@ public class KubernetesConfigOptions {
                                             code("FlinkKubeClient#checkAndUpdateConfigMap"))
                                     .build());
 
-    public static final ConfigOption<Duration> KUBERNETES_TRANSACTIONAL_OPERATION_RETRY_INTERVAL =
-            key("kubernetes.transactional-operation.retry-interval")
-                    .durationType()
-                    .defaultValue(Duration.ofMillis(3000))
-                    .withDescription("Interval between each retries of kubernetes transactional operation.");
+    public static final ConfigOption<Duration>
+            KUBERNETES_TRANSACTIONAL_OPERATION_INIT_RETRY_INTERVAL =
+                    key("kubernetes.transactional-operation.retry-interval-initial")
+                            .durationType()
+                            .defaultValue(Duration.ofMillis(3000))
+                            .withDescription(
+                                    "The initial interval between each retries of kubernetes transactional operation. The"
+                                            + " interval of the following retries will be 1.5 times of the previous retry interval.");
 
     public static final ConfigOption<String> JOB_MANAGER_POD_TEMPLATE;
 

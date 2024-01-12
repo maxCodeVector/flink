@@ -103,7 +103,7 @@ public class KubernetesResourceManagerDriver
 
     private final ScheduledExecutorService podOperationExecutorService;
     private final int kubernetesOperationMaxRetryAttempts;
-    private final long kubernetesOperationRetryIntervalMs;
+    private final long kubernetesOperationInitialRetryIntervalMs;
 
     public KubernetesResourceManagerDriver(
             Configuration flinkConfig,
@@ -115,12 +115,18 @@ public class KubernetesResourceManagerDriver
         this.flinkKubeClient = Preconditions.checkNotNull(flinkKubeClient);
         this.requestResourceFutures = new HashMap<>();
         this.running = false;
-        this.podOperationExecutorService = Executors.newSingleThreadScheduledExecutor(
-                new ExecutorThreadFactory("Pod-Operation-Schedule-Service"));
-        this.kubernetesOperationMaxRetryAttempts = flinkConfig.getInteger(
-                KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_MAX_RETRIES);
-        this.kubernetesOperationRetryIntervalMs = flinkConfig.get(
-                KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_RETRY_INTERVAL).toMillis();
+        this.podOperationExecutorService =
+                Executors.newSingleThreadScheduledExecutor(
+                        new ExecutorThreadFactory("Pod-Operation-Schedule-Service"));
+        this.kubernetesOperationMaxRetryAttempts =
+                flinkConfig.getInteger(
+                        KubernetesConfigOptions.KUBERNETES_TRANSACTIONAL_OPERATION_MAX_RETRIES);
+        this.kubernetesOperationInitialRetryIntervalMs =
+                flinkConfig
+                        .get(
+                                KubernetesConfigOptions
+                                        .KUBERNETES_TRANSACTIONAL_OPERATION_INIT_RETRY_INTERVAL)
+                        .toMillis();
     }
 
     // ------------------------------------------------------------------------
@@ -282,10 +288,11 @@ public class KubernetesResourceManagerDriver
 
         CompletableFuture<List<KubernetesPod>> podListCompletableFuture = new CompletableFuture<>();
         podOperationExecutorService.execute(
-                () -> getPodsWithLabelWithRetry(
-                        KubernetesUtils.getTaskManagerSelectors(clusterId),
-                        kubernetesOperationMaxRetryAttempts,
-                        podListCompletableFuture));
+                () ->
+                        getPodsWithLabelWithRetry(
+                                KubernetesUtils.getTaskManagerSelectors(clusterId),
+                                kubernetesOperationMaxRetryAttempts,
+                                podListCompletableFuture));
         List<KubernetesPod> podList = null;
         try {
             podList = podListCompletableFuture.get();
@@ -319,27 +326,46 @@ public class KubernetesResourceManagerDriver
     }
 
     private void getPodsWithLabelWithRetry(
-            Map<String, String> taskManagerLabels, int maxRetry, CompletableFuture<List<KubernetesPod>> podListCompletableFuture) {
+            Map<String, String> taskManagerLabels,
+            int maxRetry,
+            CompletableFuture<List<KubernetesPod>> podListCompletableFuture) {
 
         // get pod list with retry
-        flinkKubeClient.getPodsWithLabels(taskManagerLabels).whenCompleteAsync((kubernetesPods, throwable) -> {
-                    if (throwable != null) {
-                        int remainRetry = maxRetry - 1;
-                        if (remainRetry <= 0) {
-                            log.error("listing pod failed due to exception and reach max attempt", throwable);
-                            podListCompletableFuture.completeExceptionally(throwable);
-                        } else {
-                            log.warn("listing pod failed, remain attempt {}", remainRetry);
-                            podOperationExecutorService.schedule(
-                                    () -> getPodsWithLabelWithRetry(taskManagerLabels, remainRetry, podListCompletableFuture),
-                                    kubernetesOperationRetryIntervalMs,
-                                    TimeUnit.MILLISECONDS);
-                        }
-                    } else {
-                        podListCompletableFuture.complete(kubernetesPods);
-                    }
-                }
-        );
+        flinkKubeClient
+                .getPodsWithLabels(taskManagerLabels)
+                .whenCompleteAsync(
+                        (kubernetesPods, throwable) -> {
+                            if (throwable != null) {
+                                int remainRetry = maxRetry - 1;
+                                if (remainRetry <= 0) {
+                                    log.error(
+                                            "listing pod failed due to exception and reach max attempt",
+                                            throwable);
+                                    podListCompletableFuture.completeExceptionally(throwable);
+                                } else {
+                                    int currentRetry =
+                                            kubernetesOperationMaxRetryAttempts - maxRetry;
+                                    long nextRetryIntervalMs =
+                                            (long)
+                                                    (kubernetesOperationInitialRetryIntervalMs
+                                                            * Math.pow(1.5, currentRetry));
+                                    log.warn(
+                                            "listing pod failed, remain attempt {}, will retry after {}ms",
+                                            remainRetry,
+                                            nextRetryIntervalMs);
+                                    podOperationExecutorService.schedule(
+                                            () ->
+                                                    getPodsWithLabelWithRetry(
+                                                            taskManagerLabels,
+                                                            remainRetry,
+                                                            podListCompletableFuture),
+                                            nextRetryIntervalMs,
+                                            TimeUnit.MILLISECONDS);
+                                }
+                            } else {
+                                podListCompletableFuture.complete(kubernetesPods);
+                            }
+                        });
     }
 
     private void updateKubernetesServiceTargetPortIfNecessary() throws Exception {
